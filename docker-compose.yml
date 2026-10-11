@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  vnavhomelab-backend:
+    build:
+      context: ./backend
+      dockerfile: ../deploy/Dockerfile.backend
+    container_name: vnavhomelab-backend
+    restart: unless-stopped
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - HOMELAB_HOSTNAME=vnavhomelab
+      - SAMPLING_INTERVAL=2.0
+      - RING_BUFFER_SIZE=120
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-vnav-homelab-key-2026}
+      - ALLOWED_ROOT_PATH=/host/homelab
+    volumes:
+      # Read-only mounts for hardware sensors and metrics
+      - /sys/class/thermal:/sys/class/thermal:ro
+      - /proc:/host/proc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      homelab-net:
+        aliases:
+          - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  vnavhomelab-frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../deploy/Dockerfile.frontend
+    container_name: vnavhomelab-frontend
+    restart: unless-stopped
+    ports:
+      # Expose dashboard on port 3050 to avoid conflicts with Grafana (3001) / Uptime Kuma (3002)
+      - "${DASHBOARD_PORT:-3050}:80"
+    depends_on:
+      - vnavhomelab-backend
+    networks:
+      - homelab-net
+
+networks:
+  homelab-net:
+    driver: bridge
